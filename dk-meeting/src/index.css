@@ -1,0 +1,95 @@
+@import "tailwindcss";
+@import "@fontsource/be-vietnam-pro/400.css";
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/800.css";
+@import "@fontsource/be-vietnam-pro/900.css";
+
+@theme {
+  --font-sans: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --color-ink-950: #0a0a0b;
+  --color-ink-900: #111113;
+  --color-ink-850: #16161a;
+  --color-ink-800: #1c1c21;
+  --color-ink-700: #2a2a31;
+  --color-ink-600: #3a3a43;
+  --color-ink-400: #8b8b96;
+  --color-ink-300: #b4b4bd;
+  --color-rec: #ef4444;
+  --color-rec-soft: #ef444422;
+  --color-ok: #22c55e;
+  --color-warn: #f59e0b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+select option {
+  background: var(--color-ink-900);
+  color: #f4f4f5;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-950);
+  color: #f4f4f5;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+input,
+textarea,
+select,
+.selectable {
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.rec-dot {
+  animation: rec-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes splash-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); letter-spacing: 0.3em; }
+  to { opacity: 1; transform: none; }
+}
+.splash-in {
+  animation: splash-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot, .splash-in { animation: none; }
+}
