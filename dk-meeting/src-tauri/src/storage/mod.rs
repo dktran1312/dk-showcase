@@ -12,7 +12,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::audio::wav_writer::recover_duration_ms;
 use crate::audio::Track;
 use crate::error::{AppError, AppResult};
-use models::{status, AudioChunk, Bookmark, Meeting, MeetingDetail, MeetingPatch, Settings};
+use models::{
+    status, ActionItemRow, AudioChunk, Bookmark, Meeting, MeetingDetail, MeetingPatch,
+    MinutesRecord, Segment, Settings,
+};
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -228,11 +231,16 @@ impl Db {
             .prepare("SELECT id, meeting_id, at_ms, label FROM bookmarks WHERE meeting_id = ?1 ORDER BY at_ms")?
             .query_map([id], bookmark_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
+        drop(conn);
         Ok(MeetingDetail {
             meeting,
             chunks,
             bookmarks,
             folder: folder.to_string_lossy().into_owned(),
+            segments: self.list_segments(id)?,
+            minutes: self.get_minutes(id)?,
+            action_items: self.list_action_items(id)?,
+            processing: false,
         })
     }
 
@@ -298,6 +306,149 @@ impl Db {
             .lock()
             .execute("DELETE FROM bookmarks WHERE id = ?1", [id])?;
         Ok(())
+    }
+
+    // ───────────── segments (transcript) ─────────────
+
+    pub fn insert_segment(
+        &self,
+        meeting_id: &str,
+        track: &str,
+        start_ms: u64,
+        end_ms: u64,
+        lang: &str,
+        text: &str,
+    ) -> AppResult<Segment> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "INSERT INTO segments(meeting_id, track, start_ms, end_ms, lang, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![meeting_id, track, start_ms as i64, end_ms as i64, lang, text],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(conn.query_row(
+            &format!("SELECT {SEGMENT_COLS} FROM segments WHERE id = ?1"),
+            [id],
+            segment_from_row,
+        )?)
+    }
+
+    pub fn list_segments(&self, meeting_id: &str) -> AppResult<Vec<Segment>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SEGMENT_COLS} FROM segments WHERE meeting_id = ?1 ORDER BY start_ms, id"
+        ))?;
+        let rows = stmt
+            .query_map([meeting_id], segment_from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn set_translation(&self, segment_id: i64, translation: &str) -> AppResult<()> {
+        self.conn.lock().execute(
+            "UPDATE segments SET translation = ?2 WHERE id = ?1",
+            params![segment_id, translation],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_segments(&self, meeting_id: &str) -> AppResult<()> {
+        self.conn
+            .lock()
+            .execute("DELETE FROM segments WHERE meeting_id = ?1", [meeting_id])?;
+        Ok(())
+    }
+
+    // ───────────── minutes & action items ─────────────
+
+    pub fn get_minutes(&self, meeting_id: &str) -> AppResult<Option<MinutesRecord>> {
+        let row: Option<(String, String, bool, String)> = self
+            .conn
+            .lock()
+            .query_row(
+                "SELECT data, model, edited, updated_at FROM minutes WHERE meeting_id = ?1",
+                [meeting_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()?;
+        Ok(row.map(|(data, model, edited, updated_at)| MinutesRecord {
+            data: serde_json::from_str(&data).unwrap_or(serde_json::Value::Null),
+            model,
+            edited,
+            updated_at,
+        }))
+    }
+
+    pub fn save_minutes(
+        &self,
+        meeting_id: &str,
+        data: &serde_json::Value,
+        model: &str,
+        edited: bool,
+    ) -> AppResult<()> {
+        let now = now_iso();
+        self.conn.lock().execute(
+            "INSERT INTO minutes(meeting_id, data, model, edited, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             ON CONFLICT(meeting_id) DO UPDATE SET data = excluded.data,
+                model = CASE WHEN excluded.model = '' THEN minutes.model ELSE excluded.model END,
+                edited = excluded.edited, updated_at = excluded.updated_at",
+            params![meeting_id, serde_json::to_string(data)?, model, edited, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_action_items(&self, meeting_id: &str) -> AppResult<Vec<ActionItemRow>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, task, owner, deadline, status, source_ms FROM action_items
+             WHERE meeting_id = ?1 ORDER BY position, id",
+        )?;
+        let rows = stmt
+            .query_map([meeting_id], |r| {
+                Ok(ActionItemRow {
+                    id: r.get(0)?,
+                    task: r.get(1)?,
+                    owner: r.get(2)?,
+                    deadline: r.get(3)?,
+                    status: r.get(4)?,
+                    source_ms: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Ghi đè toàn bộ danh sách việc cần làm (giữ thứ tự).
+    pub fn replace_action_items(
+        &self,
+        meeting_id: &str,
+        items: &[ActionItemRow],
+    ) -> AppResult<Vec<ActionItemRow>> {
+        {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction()?;
+            tx.execute(
+                "DELETE FROM action_items WHERE meeting_id = ?1",
+                [meeting_id],
+            )?;
+            for (i, it) in items.iter().enumerate() {
+                tx.execute(
+                    "INSERT INTO action_items(meeting_id, task, owner, deadline, status, source_ms, position)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![meeting_id, it.task.trim(), it.owner.trim(), it.deadline.trim(), it.status, it.source_ms, i as i64],
+                )?;
+            }
+            tx.commit()?;
+        }
+        self.list_action_items(meeting_id)
+    }
+
+    pub fn glossary_terms(&self) -> AppResult<Vec<String>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare("SELECT term FROM glossary ORDER BY builtin DESC, id")?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(rows)
     }
 
     // ───────────── settings ─────────────
@@ -367,6 +518,23 @@ impl Db {
     }
 }
 
+const SEGMENT_COLS: &str =
+    "id, meeting_id, track, start_ms, end_ms, lang, text, translation, edited";
+
+fn segment_from_row(r: &Row) -> rusqlite::Result<Segment> {
+    Ok(Segment {
+        id: r.get(0)?,
+        meeting_id: r.get(1)?,
+        track: r.get(2)?,
+        start_ms: r.get(3)?,
+        end_ms: r.get(4)?,
+        lang: r.get(5)?,
+        text: r.get(6)?,
+        translation: r.get(7)?,
+        edited: r.get(8)?,
+    })
+}
+
 fn bookmark_from_row(r: &Row) -> rusqlite::Result<Bookmark> {
     Ok(Bookmark {
         id: r.get(0)?,
@@ -417,6 +585,64 @@ mod tests {
 
         db.delete_meeting("a").unwrap();
         assert_eq!(db.list_meetings(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn segments_minutes_action_items() {
+        let db = Db::open_in_memory().unwrap();
+        db.create_meeting("m", "Họp", "", "", "auto", "[]").unwrap();
+        let s = db
+            .insert_segment("m", "mic", 1000, 2500, "en", "LED wall twelve by six")
+            .unwrap();
+        db.set_translation(s.id, "Màn LED 12 x 6").unwrap();
+        assert_eq!(
+            db.list_segments("m").unwrap()[0].translation.as_deref(),
+            Some("Màn LED 12 x 6")
+        );
+        // FTS tìm được cả bản dịch (không dấu)
+        assert_eq!(db.list_meetings(Some("man led")).unwrap().len(), 1);
+
+        db.save_minutes(
+            "m",
+            &serde_json::json!({"summary": ["a"]}),
+            "qwen3:8b",
+            false,
+        )
+        .unwrap();
+        db.save_minutes("m", &serde_json::json!({"summary": ["b"]}), "", true)
+            .unwrap();
+        let mr = db.get_minutes("m").unwrap().unwrap();
+        assert_eq!(mr.model, "qwen3:8b");
+        assert!(mr.edited);
+
+        let items = vec![
+            ActionItemRow {
+                id: 0,
+                task: "Gửi báo giá".into(),
+                owner: "An".into(),
+                deadline: "T6".into(),
+                status: "todo".into(),
+                source_ms: Some(1000),
+            },
+            ActionItemRow {
+                id: 0,
+                task: "Check venue".into(),
+                owner: "".into(),
+                deadline: "".into(),
+                status: "done".into(),
+                source_ms: None,
+            },
+        ];
+        let saved = db.replace_action_items("m", &items).unwrap();
+        assert_eq!(saved.len(), 2);
+        assert_eq!(saved[1].status, "done");
+        let detail = db
+            .meeting_detail("m", std::path::Path::new("/tmp"))
+            .unwrap();
+        assert_eq!(detail.segments.len(), 1);
+        assert_eq!(detail.action_items.len(), 2);
+        db.delete_meeting("m").unwrap();
+        assert!(db.list_action_items("m").unwrap().is_empty());
     }
 
     #[test]

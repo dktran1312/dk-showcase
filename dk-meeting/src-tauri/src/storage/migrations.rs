@@ -88,6 +88,29 @@ const MIGRATIONS: &[&str] = &[
         value TEXT NOT NULL
     );
     "#,
+    // v2 — M4: biên bản + việc cần làm
+    r#"
+    CREATE TABLE minutes (
+        meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,
+        data       TEXT NOT NULL,
+        model      TEXT NOT NULL DEFAULT '',
+        edited     INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE action_items (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        task       TEXT NOT NULL,
+        owner      TEXT NOT NULL DEFAULT '',
+        deadline   TEXT NOT NULL DEFAULT '',
+        status     TEXT NOT NULL DEFAULT 'todo',
+        source_ms  INTEGER,
+        position   INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_action_items_meeting ON action_items(meeting_id, position);
+    "#,
 ];
 
 /// Từ điển thuật ngữ mặc định của ngành sự kiện (seed 1 lần ở v1).

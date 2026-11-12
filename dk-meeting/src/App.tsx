@@ -9,13 +9,15 @@ import { NewMeeting } from "./pages/NewMeeting";
 import { Live } from "./pages/Live";
 import { MeetingDetailPage } from "./pages/MeetingDetail";
 import { SettingsPage } from "./pages/Settings";
+import { SystemCheckPage } from "./pages/SystemCheck";
 
 export type Route =
   | { name: "home" }
   | { name: "new" }
   | { name: "live" }
   | { name: "meeting"; id: string }
-  | { name: "settings" };
+  | { name: "settings" }
+  | { name: "systemCheck"; firstRun: boolean };
 
 export interface ActiveRecording {
   meeting: Meeting;
@@ -40,12 +42,14 @@ export default function App() {
       return;
     }
     const started = Date.now();
-    Promise.all([api.systemInfo(), api.recordingStatus()])
-      .then(([sys, status]) => {
+    Promise.all([api.systemInfo(), api.recordingStatus(), api.getSettings()])
+      .then(([sys, status, settings]) => {
         setInfo(sys);
         if (status) {
           setRecording({ meeting: status.meeting, paused: status.paused, elapsedMs: status.elapsedMs });
           setRoute({ name: "live" });
+        } else if (!settings.onboarded) {
+          setRoute({ name: "systemCheck", firstRun: true });
         }
         setTimeout(() => setBooting(false), Math.max(0, MIN_SPLASH_MS - (Date.now() - started)));
       })
@@ -116,7 +120,15 @@ export default function App() {
         {route.name === "meeting" && (
           <MeetingDetailPage id={route.id} onBack={() => navigate({ name: "home" })} />
         )}
-        {route.name === "settings" && info && <SettingsPage info={info} />}
+        {route.name === "settings" && info && (
+          <SettingsPage info={info} onSystemCheck={() => navigate({ name: "systemCheck", firstRun: false })} />
+        )}
+        {route.name === "systemCheck" && (
+          <SystemCheckPage
+            firstRun={route.firstRun}
+            onDone={() => navigate(route.firstRun ? { name: "home" } : { name: "settings" })}
+          />
+        )}
       </main>
       <ConfirmHost />
     </div>

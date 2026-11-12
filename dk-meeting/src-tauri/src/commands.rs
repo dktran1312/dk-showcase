@@ -7,10 +7,12 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::audio::mic::{list_input_devices as list_mics, MicSource};
 use crate::audio::recorder::{meeting_dir, LevelsEvent, Recorder};
-use crate::audio::{AudioSource, ErrorFn, InputDevice, SourceKind};
+use crate::audio::{AudioSource, ErrorFn, InputDevice, SourceKind, Track};
 use crate::error::{AppError, AppResult};
+use crate::live::{finish_in_background, start_pipeline};
 use crate::state::AppState;
 use crate::storage::models::{status, Bookmark, Meeting, MeetingDetail, MeetingPatch, Settings};
+use crate::stt::SttStatus;
 
 pub const EVT_LEVELS: &str = "recording://levels";
 pub const EVT_ERROR: &str = "recording://error";
@@ -47,7 +49,9 @@ pub fn list_meetings(state: State<AppState>, query: Option<String>) -> AppResult
 
 #[tauri::command]
 pub fn get_meeting(state: State<AppState>, id: String) -> AppResult<MeetingDetail> {
-    state.db.meeting_detail(&id, &state.paths.recordings_dir)
+    let mut d = state.db.meeting_detail(&id, &state.paths.recordings_dir)?;
+    d.processing = state.processing.lock().contains(&id);
+    Ok(d)
 }
 
 #[tauri::command]
@@ -69,6 +73,11 @@ pub fn delete_meeting(state: State<AppState>, id: String) -> AppResult<()> {
     {
         return Err(AppError::msg(
             "Cuộc họp đang ghi âm, hãy dừng trước khi xoá.",
+        ));
+    }
+    if state.processing.lock().contains(&id) {
+        return Err(AppError::msg(
+            "Cuộc họp đang được xử lý, hãy đợi xong rồi xoá.",
         ));
     }
     state.db.delete_meeting(&id)?;
@@ -110,6 +119,7 @@ pub struct RecordingStatus {
     pub paused: bool,
     pub elapsed_ms: u64,
     pub sources: Vec<SourceKind>,
+    pub stt: Option<SttStatus>,
 }
 
 #[tauri::command]
@@ -134,6 +144,10 @@ pub async fn start_meeting(
     let sources: Vec<Box<dyn AudioSource>> =
         vec![Box::new(MicSource::open(req.mic_device.clone())?)];
     let kinds: Vec<SourceKind> = sources.iter().map(|s| s.kind()).collect();
+    let tracks: Vec<(Track, u32)> = sources
+        .iter()
+        .map(|s| (s.track(), s.format().sample_rate))
+        .collect();
 
     let id = uuid::Uuid::new_v4().to_string();
     let meeting = state.db.create_meeting(
@@ -155,19 +169,28 @@ pub async fn start_meeting(
         let _ = err_app.emit(EVT_ERROR, msg);
     });
 
+    // Nhận dạng giọng nói + dịch (nếu đã có model); không có thì vẫn ghi âm bình thường.
+    *state.stt_status.lock() = None;
+    let (pipeline, taps) = start_pipeline(&app, &state, &id, &req.language, &tracks, true);
+
     match Recorder::start(
         id.clone(),
         meeting_dir(&state.paths.recordings_dir, &id),
         sources,
         state.db.clone(),
+        taps,
         on_levels,
         on_error,
     ) {
         Ok(rec) => {
             *slot = Some(rec);
+            *state.pipeline.lock() = pipeline;
             Ok(meeting)
         }
         Err(e) => {
+            if let Some(p) = pipeline {
+                std::thread::spawn(move || p.stt.finish());
+            }
             let _ = state.db.delete_meeting(&id);
             let _ = std::fs::remove_dir_all(meeting_dir(&state.paths.recordings_dir, &id));
             Err(e)
@@ -186,6 +209,7 @@ pub fn get_recording_status(state: State<AppState>) -> AppResult<Option<Recordin
         paused: rec.is_paused(),
         elapsed_ms: rec.elapsed_ms(),
         sources: rec.sources().to_vec(),
+        stt: state.stt_status.lock().clone(),
     }))
 }
 
@@ -210,22 +234,30 @@ pub fn resume_meeting(state: State<AppState>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn stop_meeting(state: State<'_, AppState>) -> AppResult<Meeting> {
-    stop_current(&state)?.ok_or_else(|| AppError::msg("Không có cuộc họp nào đang ghi."))
+pub async fn stop_meeting(app: AppHandle, state: State<'_, AppState>) -> AppResult<Meeting> {
+    let (meeting, pipeline) = stop_current(&state)?;
+    let meeting = meeting.ok_or_else(|| AppError::msg("Không có cuộc họp nào đang ghi."))?;
+    if let Some(p) = pipeline {
+        finish_in_background(app, p); // nhận dạng + dịch nốt phần cuối ở nền
+    }
+    Ok(meeting)
 }
 
-/// Dừng phiên ghi hiện tại (dùng cả khi đóng app).
-pub fn stop_current(state: &AppState) -> AppResult<Option<Meeting>> {
+/// Dừng phiên ghi hiện tại. Trả về pipeline nhận dạng để người gọi chờ xử lý nốt.
+pub fn stop_current(
+    state: &AppState,
+) -> AppResult<(Option<Meeting>, Option<crate::live::Pipeline>)> {
     let Some(rec) = state.recorder.lock().take() else {
-        return Ok(None);
+        return Ok((None, None));
     };
     let id = rec.meeting_id().to_string();
-    let duration_ms = rec.stop();
-    Ok(Some(state.db.finish_meeting(
-        &id,
-        status::DONE,
-        duration_ms,
-    )?))
+    let duration_ms = rec.stop(); // drop các tap → bộ nhận dạng xử lý nốt rồi tự kết thúc
+    let pipeline = state.pipeline.lock().take();
+    *state.stt_status.lock() = None;
+    Ok((
+        Some(state.db.finish_meeting(&id, status::DONE, duration_ms)?),
+        pipeline,
+    ))
 }
 
 #[tauri::command]

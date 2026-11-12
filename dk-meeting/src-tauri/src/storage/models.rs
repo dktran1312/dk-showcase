@@ -53,6 +53,11 @@ pub struct MeetingDetail {
     pub chunks: Vec<AudioChunk>,
     pub bookmarks: Vec<Bookmark>,
     pub folder: String,
+    pub segments: Vec<Segment>,
+    pub minutes: Option<MinutesRecord>,
+    pub action_items: Vec<ActionItemRow>,
+    /// Đang nhận dạng / dịch nốt phần cuối sau khi dừng ghi.
+    pub processing: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -64,6 +69,50 @@ pub struct MeetingPatch {
     pub notes: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Segment {
+    pub id: i64,
+    pub meeting_id: String,
+    pub track: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub lang: String,
+    pub text: String,
+    pub translation: Option<String>,
+    pub edited: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionItemRow {
+    #[serde(default)]
+    pub id: i64,
+    pub task: String,
+    #[serde(default)]
+    pub owner: String,
+    #[serde(default)]
+    pub deadline: String,
+    /// "todo" | "doing" | "done"
+    #[serde(default = "default_status")]
+    pub status: String,
+    #[serde(default)]
+    pub source_ms: Option<i64>,
+}
+
+fn default_status() -> String {
+    "todo".into()
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinutesRecord {
+    pub data: serde_json::Value,
+    pub model: String,
+    pub edited: bool,
+    pub updated_at: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -71,8 +120,18 @@ pub struct Settings {
     pub mic_device: Option<String>,
     /// "auto" | "vi" | "en"
     pub language: String,
-    /// Chỉ có "dark" ở M1.
+    /// Chỉ có "dark".
     pub theme: String,
+    /// Bật phụ đề trực tiếp (whisper).
+    pub stt_enabled: bool,
+    /// id model whisper, xem `stt::models::WHISPER_MODELS`.
+    pub whisper_model: String,
+    /// Bật dịch trực tiếp sang tiếng Việt.
+    pub translate_enabled: bool,
+    pub ollama_url: String,
+    pub ollama_model: String,
+    /// Đã qua màn hình "Kiểm tra hệ thống" lần đầu.
+    pub onboarded: bool,
 }
 
 impl Default for Settings {
@@ -81,6 +140,12 @@ impl Default for Settings {
             mic_device: None,
             language: "auto".into(),
             theme: "dark".into(),
+            stt_enabled: true,
+            whisper_model: crate::stt::models::DEFAULT_MODEL.into(),
+            translate_enabled: true,
+            ollama_url: crate::llm::ollama::DEFAULT_URL.into(),
+            ollama_model: crate::llm::ollama::DEFAULT_MODEL.into(),
+            onboarded: false,
         }
     }
 }

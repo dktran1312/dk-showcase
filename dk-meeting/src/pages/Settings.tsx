@@ -1,13 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../lib/api";
 import { LANGUAGE_LABEL, type InputDevice, type Language, type Settings, type SystemInfo } from "../lib/types";
 import { Button } from "../components/Button";
+import { Toggle } from "../components/Toggle";
+import { WhisperModels } from "../components/WhisperModels";
+import { OllamaPanel } from "../components/OllamaPanel";
 
-export function SettingsPage({ info }: { info: SystemInfo }) {
+export function SettingsPage({ info, onSystemCheck }: { info: SystemInfo; onSystemCheck: () => void }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [devices, setDevices] = useState<InputDevice[]>([]);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
+
+  const latest = useRef<Settings | null>(null);
+  latest.current = settings;
 
   useEffect(() => {
     api.getSettings().then(setSettings).catch((e) => setError(errorText(e)));
@@ -15,8 +21,9 @@ export function SettingsPage({ info }: { info: SystemInfo }) {
   }, []);
 
   const update = async (patch: Partial<Settings>) => {
-    if (!settings) return;
-    const next = { ...settings, ...patch };
+    if (!latest.current) return;
+    const next = { ...latest.current, ...patch };
+    latest.current = next;
     setSettings(next);
     try {
       await api.saveSettings(next);
@@ -30,9 +37,12 @@ export function SettingsPage({ info }: { info: SystemInfo }) {
   return (
     <div className="h-full overflow-y-auto px-10 py-10">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-3xl font-extrabold tracking-tight">Cài đặt</h1>
-          <span className={`text-sm text-ok transition-opacity ${saved ? "opacity-100" : "opacity-0"}`}>Đã lưu ✓</span>
+          <span className={`flex-1 text-sm text-ok transition-opacity ${saved ? "opacity-100" : "opacity-0"}`}>Đã lưu ✓</span>
+          <Button variant="ghost" onClick={onSystemCheck}>
+            Kiểm tra hệ thống
+          </Button>
         </div>
         {error && <p className="mt-4 text-sm text-rec">{error}</p>}
 
@@ -68,6 +78,24 @@ export function SettingsPage({ info }: { info: SystemInfo }) {
               </Row>
             </Card>
 
+            <Card title="Nhận giọng nói (phụ đề trực tiếp)">
+              <Row label="Bật phụ đề trực tiếp">
+                <Toggle checked={settings.sttEnabled} onChange={(v) => update({ sttEnabled: v })} label="Bật phụ đề" />
+              </Row>
+              <WhisperModels selected={settings.whisperModel} onSelect={(id) => update({ whisperModel: id })} />
+            </Card>
+
+            <Card title="Dịch & biên bản (Ollama)">
+              <Row label="Dịch trực tiếp sang tiếng Việt">
+                <Toggle
+                  checked={settings.translateEnabled}
+                  onChange={(v) => update({ translateEnabled: v })}
+                  label="Bật dịch trực tiếp"
+                />
+              </Row>
+              <OllamaPanel model={settings.ollamaModel} onSelect={(m) => update({ ollamaModel: m })} />
+            </Card>
+
             <Card title="Dữ liệu">
               <Row label="Thư mục dữ liệu">
                 <div className="flex min-w-0 items-center gap-3">
@@ -83,10 +111,8 @@ export function SettingsPage({ info }: { info: SystemInfo }) {
             </Card>
 
             <Card title="Sắp có">
-              <Soon label="Model Whisper (tải / xoá), nhận GPU" milestone="M3" />
-              <Soon label="Model Ollama cho dịch & biên bản" milestone="M4" />
-              <Soon label="Mẫu biên bản" milestone="M4" />
-              <Soon label="Từ điển thuật ngữ (đã có sẵn 57 thuật ngữ ngành sự kiện)" milestone="M5" />
+              <Soon label="Sửa từ điển thuật ngữ (đang dùng sẵn 57 thuật ngữ ngành sự kiện)" milestone="M5" />
+              <Soon label="Thu âm thanh app họp (Zalo, Meet, Messenger)" milestone="M2" />
             </Card>
 
             <p className="pt-4 text-xs text-ink-600">

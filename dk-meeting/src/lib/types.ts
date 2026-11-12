@@ -41,6 +41,10 @@ export interface MeetingDetail {
   chunks: AudioChunk[];
   bookmarks: Bookmark[];
   folder: string;
+  segments: Segment[];
+  minutes: MinutesRecord | null;
+  actionItems: ActionItem[];
+  processing: boolean;
 }
 
 export interface MeetingPatch {
@@ -73,6 +77,7 @@ export interface RecordingStatus {
   paused: boolean;
   elapsedMs: number;
   sources: SourceKind[];
+  stt: SttStatus | null;
 }
 
 export interface TrackLevel {
@@ -92,6 +97,12 @@ export interface Settings {
   micDevice: string | null;
   language: Language;
   theme: "dark";
+  sttEnabled: boolean;
+  whisperModel: string;
+  translateEnabled: boolean;
+  ollamaUrl: string;
+  ollamaModel: string;
+  onboarded: boolean;
 }
 
 export interface SystemInfo {
@@ -119,4 +130,158 @@ export const STATUS_LABEL: Record<MeetingStatus, string> = {
   paused: "Tạm dừng",
   done: "Hoàn tất",
   interrupted: "Bị gián đoạn",
+};
+
+// ───────────── M3: nhận giọng nói ─────────────
+
+export interface Segment {
+  id: number;
+  meetingId: string;
+  track: Track;
+  startMs: number;
+  endMs: number;
+  lang: string;
+  text: string;
+  translation: string | null;
+  edited: boolean;
+}
+
+export type SttStatus =
+  | { state: "loading"; model: string }
+  | { state: "ready"; model: string; gpu: boolean }
+  | { state: "unavailable"; reason: string }
+  | { state: "error"; message: string };
+
+export interface WhisperModel {
+  id: string;
+  label: string;
+  file: string;
+  sizeMb: number;
+  minMemGb: number;
+  description: string;
+  installed: boolean;
+}
+
+export interface DownloadProgress {
+  id: string;
+  downloaded: number;
+  total: number;
+  done: boolean;
+  error: string | null;
+}
+
+export interface GpuInfo {
+  name: string;
+  vramGb: number | null;
+  nvidia: boolean;
+}
+
+export interface Hardware {
+  os: string;
+  cpu: string;
+  cores: number;
+  ramGb: number;
+  gpus: GpuInfo[];
+}
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+}
+
+export interface OllamaStatus {
+  url: string;
+  running: boolean;
+  version: string | null;
+  models: OllamaModel[];
+  configuredModel: string;
+  hasModel: boolean;
+  error: string | null;
+}
+
+export interface SystemCheck {
+  hardware: Hardware;
+  sttBackend: string;
+  whisperModels: WhisperModel[];
+  vadInstalled: boolean;
+  recommendedModel: string;
+  ollama: OllamaStatus;
+  settings: Settings;
+}
+
+// ───────────── M4: biên bản ─────────────
+
+export interface TechItem {
+  requirements: string[];
+  numbers: string[];
+}
+
+export interface Minutes {
+  general: { title: string; date: string; duration: string; participants: string[]; client: string };
+  summary: string[];
+  brief: {
+    objective: string;
+    concept: string;
+    key_message: string;
+    audience: string;
+    show_date: string;
+    venue: string;
+    scale: string;
+  };
+  technical: {
+    led_visual: TechItem;
+    sound: TechItem;
+    lighting: TechItem;
+    sfx: TechItem;
+    stage: TechItem;
+    artist_mc: TechItem;
+    other: TechItem;
+  };
+  rundown: { time: string; content: string }[];
+  budget: { item: string; amount: string; note: string }[];
+  decisions: { content: string; source_time: string }[];
+  action_items: { task: string; owner: string; deadline: string; source_time: string }[];
+  confirm_with_client: string[];
+  risks: string[];
+}
+
+export interface MinutesRecord {
+  data: Minutes;
+  model: string;
+  edited: boolean;
+  updatedAt: string;
+}
+
+export type ActionStatus = "todo" | "doing" | "done";
+
+export interface ActionItem {
+  id: number;
+  task: string;
+  owner: string;
+  deadline: string;
+  status: ActionStatus;
+  sourceMs: number | null;
+}
+
+export interface MinutesProgress {
+  meetingId: string;
+  step: number;
+  total: number;
+  message: string;
+}
+
+export const ACTION_STATUS_LABEL: Record<ActionStatus, string> = {
+  todo: "Chưa làm",
+  doing: "Đang làm",
+  done: "Xong",
+};
+
+export const LANG_NAME: Record<string, string> = {
+  vi: "VI",
+  en: "EN",
+  ko: "KO",
+  ja: "JA",
+  zh: "ZH",
+  th: "TH",
+  fr: "FR",
 };

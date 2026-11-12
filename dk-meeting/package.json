@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:cuda": "tauri dev --features cuda",
+    "build:cuda": "tauri build --features cuda"
   },
   "dependencies": {
     "@fontsource/be-vietnam-pro": "^5.3.0",

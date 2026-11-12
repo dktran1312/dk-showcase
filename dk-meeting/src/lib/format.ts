@@ -43,3 +43,16 @@ export function defaultMeetingTitle(): string {
   const mi = String(d.getMinutes()).padStart(2, "0");
   return `Cuộc họp ${dd}/${mo} ${hh}:${mi}`;
 }
+
+export function formatBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+  if (n >= 1024 ** 2) return `${Math.round(n / 1024 ** 2)} MB`;
+  return `${Math.round(n / 1024)} KB`;
+}
+
+/** "mm:ss" / "h:mm:ss" → ms; null nếu không phải thời gian. */
+export function parseTime(t: string): number | null {
+  const m = t.trim().replace(/^\[|\]$/g, "").match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return ((Number(m[1] ?? 0) * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000;
+}

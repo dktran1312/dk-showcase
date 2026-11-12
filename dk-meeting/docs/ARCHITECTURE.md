@@ -57,6 +57,25 @@ lang != vi → Ollama dịch (kèm 2–3 câu trước + từ điển) → event
 - **UI không đứng:** cpal callback chỉ đẩy mẫu vào channel; ghi file, đo mức, nhận dạng, gọi LLM
   đều chạy ở thread/tokio task riêng. Command Tauri không bao giờ block lâu.
 
+### Chi tiết nhận dạng (M3)
+
+- **VAD tăng dần:** âm thanh chia khung 512 mẫu (32 ms). Silero chỉ chấm điểm phần mới (lô 256 ms, kèm 0,5 s ngữ cảnh),
+  không tính lại từ đầu → rẻ kể cả khi nói liền rất lâu. Không có file VAD thì dùng VAD năng lượng.
+- **Cắt câu:** hết câu khi im ≥ 0,7 s; nói liền > 12 s thì cắt ở khoảng nghỉ dài nhất. Đệm 200 ms hai đầu.
+- **whisper:** 1 thread dùng chung GPU cho mọi track; model nạp 1 lần, giữ lại giữa các cuộc họp.
+  Chế độ *Tự nhận diện* ưu tiên vi/en, chỉ chọn ngôn ngữ khác khi xác suất ≥ 0,7. Prompt = thuật ngữ trong từ điển.
+  Lọc các câu "ảo giác" kinh điển (“Hãy subscribe cho kênh…”, “[Music]”, lặp lại danh sách thuật ngữ…).
+- **Sau khi dừng:** phần còn trong hàng đợi được nhận dạng/dịch nốt ở nền (UI hiện “Đang xử lý nốt…”).
+
+### Chi tiết LLM (M4)
+
+- Ollama `/api/chat`, `think: false`, `keep_alive: 30m`. Biên bản dùng **structured outputs** (`format` = JSON schema),
+  `num_ctx` 16k. Transcript dạng `[mm:ss] Phía mình: …`.
+- **Map-reduce:** ≤ 10 phút → 1 lượt. Dài hơn → mỗi đoạn 10 phút ra JSON trung gian (cùng schema) → gộp theo nhóm 4
+  cho tới khi còn 1.
+- Prompt chỉ chứa các thuật ngữ thật sự xuất hiện (model nhỏ không chép lại cả từ điển). Bản dịch bị lọc nếu model
+  "lặp lại hướng dẫn" hoặc dài bất thường.
+
 ## 3. Cơ sở dữ liệu (SQLite)
 
 | Bảng | Nội dung | Mốc |
@@ -67,7 +86,7 @@ lang != vi → Ollama dịch (kèm 2–3 câu trước + từ điển) → event
 | `segments` (+ `segments_fts` FTS5) | meeting_id, track, start_ms, end_ms, lang, text, translation, edited | tạo M1, dùng M3 |
 | `glossary` | term, note (seed sẵn từ điển ngành sự kiện) | tạo M1, UI M5 |
 | `settings` | key → JSON value | M1 |
-| `minutes`, `action_items` | biên bản JSON theo schema, việc cần làm | M4 |
+| `minutes`, `action_items` | biên bản JSON theo schema, việc cần làm (migration v2) | M4 |
 
 Schema có version (`PRAGMA user_version`), migration chạy tự động khi mở app.
 DB bật `journal_mode=WAL` để ghi segment liên tục mà vẫn đọc được.
@@ -140,10 +159,10 @@ một thread riêng và chỉ lộ ra handle `Send`. Implement WASAPI (M2) và C
 
 | Mốc | Nội dung |
 |---|---|
-| **M1** | Khung Tauri + UI tối, branding DK TRAN; thu micro + ghi file; danh sách cuộc họp; SQLite |
+| ✅ M1 | Khung Tauri + UI tối, branding DK TRAN; thu micro + ghi file; danh sách cuộc họp; SQLite |
+| ✅ M3 | whisper.cpp + Silero VAD → phụ đề live; Settings model; tự nhận GPU; màn hình Kiểm tra hệ thống |
+| ✅ M4 | Ollama → dịch live, biên bản JSON (map-reduce), Việc cần làm, Tóm tắt nhanh |
 | M2 | WASAPI process loopback + chọn app đang phát âm thanh; system loopback dự phòng; 2 track |
-| M3 | whisper.cpp + Silero VAD → phụ đề live; Settings model; tự nhận GPU; màn hình Kiểm tra hệ thống |
-| M4 | Ollama → dịch live, biên bản JSON (map-reduce), Việc cần làm, Tóm tắt nhanh |
 | M5 | Transcript bấm-để-nghe, sửa transcript, tìm kiếm FTS, xuất DOCX/PDF/MD/Zalo, từ điển thuật ngữ, nén Opus |
 | M6 | Installer `.msi`/`.exe`, README cài đặt (kèm Ollama + model) |
 | M7 | macOS: MacProcessTap, Metal, `.dmg` |

@@ -28,6 +28,18 @@ parking_lot = "0.12"
 crossbeam-channel = "0.5"
 log = "0.4"
 env_logger = "0.11"
+whisper-rs = { version = "0.16", features = ["log_backend"] }
+rubato = "0.16"
+ureq = { version = "3", features = ["json", "platform-verifier"] }
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+
+[features]
+default = []
+# Build whisper.cpp với CUDA (card NVIDIA). Cần CUDA Toolkit 12.8+ (RTX 50xx) và CMake.
+cuda = ["whisper-rs/cuda"]
+# Dự phòng cho bản sau (AMD/Intel, macOS).
+vulkan = []
+metal = []
 
 [profile.release]
 codegen-units = 1

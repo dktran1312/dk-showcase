@@ -1,13 +1,14 @@
 //! Điều phối một phiên ghi âm: mỗi nguồn (track) có 1 thread ghi file riêng,
 //! cộng 1 thread "ticker" đẩy đồng hồ thời gian + mức âm lên UI.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError};
+use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 use parking_lot::Mutex;
 use serde::Serialize;
 
@@ -108,6 +109,7 @@ impl Recorder {
         dir: PathBuf,
         sources: Vec<Box<dyn AudioSource>>,
         db: Arc<Db>,
+        mut taps: HashMap<Track, Sender<Vec<f32>>>,
         on_levels: LevelsFn,
         on_error: ErrorFn,
     ) -> AppResult<Self> {
@@ -142,6 +144,7 @@ impl Recorder {
                 shared: shared.clone(),
                 meter,
                 on_error: on_error.clone(),
+                tap: taps.remove(&track),
             };
             let writer = std::thread::Builder::new()
                 .name(format!("writer-{}", track.as_str()))
@@ -252,6 +255,8 @@ struct WriterCtx {
     shared: Arc<Shared>,
     meter: Arc<Meter>,
     on_error: ErrorFn,
+    /// Bản sao mono gửi cho bộ nhận dạng giọng nói (nếu bật).
+    tap: Option<Sender<Vec<f32>>>,
 }
 
 impl WriterCtx {
@@ -307,6 +312,9 @@ fn writer_loop(rx: Receiver<Vec<f32>>, mut ctx: WriterCtx) {
                         &ctx,
                         format!("Lỗi ghi file âm thanh ({}): {e}", ctx.track.as_str()),
                     ),
+                }
+                if let Some(tap) = &ctx.tap {
+                    let _ = tap.send(mono);
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
