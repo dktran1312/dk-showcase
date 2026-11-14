@@ -47,6 +47,11 @@ kbd{padding:1px 7px;border:1px solid var(--line);border-bottom-width:2px;border-
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
 .btn{display:inline-block;padding:13px 22px;border-radius:12px;background:var(--grad);color:#fff;font-weight:700;text-decoration:none;box-shadow:0 10px 26px -8px rgba(255,61,70,.55);transition:transform .15s}
 .btn:hover{transform:translateY(-1px)}
+.btn svg{width:18px;height:18px;vertical-align:-3px;margin-right:8px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.link{color:var(--ink);font-weight:600;text-decoration:none;border-bottom:1px solid currentColor}
+.top nav a.dl{color:var(--ink);font-weight:700}
+.box .file a{color:inherit}
+.dlrow{margin-top:22px}
 .small{font-size:14.5px;color:var(--muted)}
 
 /* demo */
@@ -261,6 +266,7 @@ footer{margin-top:72px}
     <a href="#tinh-nang" data-k="n1">Tính năng</a>
     <a href="#cai-dat" data-k="n2">Cài đặt</a>
     <a href="#hoi-dap" data-k="n3">Hỏi đáp</a>
+    <a class="dl" href="https://github.com/dktran1312/dk-download-kit-releases/releases/latest" target="_blank" rel="noopener" data-k="n4">Tải về</a>
     <div class="lang" role="group" aria-label="Ngôn ngữ"><button id="lvi" aria-pressed="true">VI</button><button id="len" aria-pressed="false">EN</button></div>
   </nav>
 </header>
@@ -271,7 +277,8 @@ footer{margin-top:72px}
     <h1 data-k="h1" data-html>Lướt thấy hay,<br><em>giữ lại ngay.</em></h1>
     <p data-k="lead">DK là một app nhỏ cho Windows và Mac, đi kèm nút tải trên Chrome. Rê chuột vào video hay ảnh trên Facebook, Instagram, Threads, X, TikTok hay Pinterest, bấm một lần là file nằm trong máy.</p>
     <div class="actions">
-      <a class="btn" href="#cai-dat" data-k="cta">Cách cài đặt</a>
+      <a class="btn" href="https://github.com/dktran1312/dk-download-kit-releases/releases/latest" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span data-k="dlb">Tải về miễn phí</span></a>
+      <a class="link" href="#cai-dat" data-k="cta">Cách cài đặt</a>
       <span class="small" data-k="free">Miễn phí, không cần tài khoản.</span>
     </div>
   </div>
@@ -434,11 +441,11 @@ footer{margin-top:72px}
 
 <section class="wrap" id="cai-dat"><div class="rule">
   <h2 data-k="ih">Cài đặt</h2>
-  <p class="lede" data-k="ip">File cài được chia sẻ trực tiếp. Mỗi gói đã có sẵn hướng dẫn tiếng Việt.</p>
+  <p class="lede" data-k="ip">Tải bản mới nhất trên trang Releases, chọn file đúng máy. Mỗi gói đã có sẵn hướng dẫn tiếng Việt.</p>
   <div class="install">
     <div class="box">
       <h3>Windows 10 / 11</h3>
-      <div class="file">DK-Download-Kit-Windows-v3.8.0.zip</div>
+      <div class="file"><a href="https://github.com/dktran1312/dk-download-kit-releases/releases/latest" target="_blank" rel="noopener">DK-Download-Kit-Windows-….zip</a></div>
       <ol>
         <li data-k="w1">Giải nén vào một thư mục cố định, ví dụ <code>D:\Apps</code>.</li>
         <li data-k="w2" data-html>Mở <code>DK Download Kit.exe</code>. Nếu Windows hiện bảng xanh, bấm <b>More info</b> rồi <b>Run anyway</b>.</li>
@@ -447,7 +454,7 @@ footer{margin-top:72px}
     </div>
     <div class="box">
       <h3>macOS</h3>
-      <div class="file">…-macOS-AppleSilicon (M1–M4) · …-macOS-Intel</div>
+      <div class="file"><a href="https://github.com/dktran1312/dk-download-kit-releases/releases/latest" target="_blank" rel="noopener">…-macOS-AppleSilicon (M1–M4) · …-macOS-Intel</a></div>
       <ol>
         <li data-k="a1">Giải nén, kéo DK Download Kit vào Applications.</li>
         <li data-k="a2" data-html>Lần đầu mở: <b>chuột phải → Open → Open</b>.</li>
@@ -536,7 +543,7 @@ footer{margin-top:72px}
   let lang = "vi";
 
   const EN = {
-    n1: "Features", n2: "Install", n3: "FAQ",
+    n1: "Features", n2: "Install", n3: "FAQ", n4: "Download", dlb: "Free download",
     h1: "See it, love it,<br><em>keep it.</em>",
     lead: "DK is a small app for Windows and Mac with a download button for Chrome. Hover a video or photo on Facebook, Instagram, Threads, X, TikTok or Pinterest, click once, and the file is on your computer.",
     cta: "How to install", free: "Free, no account needed.",
@@ -559,7 +566,7 @@ footer{margin-top:72px}
     m4h: "Auto-copy when done", m4p: "The file you just saved is already on your clipboard.",
     m5h: "Ask where to save", m5p: "Turn it on to pick a folder for every file.",
     m6h: "Vietnamese and English", m6p: "Switch once; the app and the extension follow.",
-    ih: "Install", ip: "Install files are shared directly. Each package includes a step-by-step guide.",
+    ih: "Install", ip: "Get the latest version from the Releases page and pick the file for your computer. Each package includes a step-by-step guide.",
     w1: "Unzip to a permanent folder, for example D:\\Apps.",
     w2: 'Open <code>DK Download Kit.exe</code>. If Windows shows a blue box, click <b>More info</b>, then <b>Run anyway</b>.',
     w3: "Paste a link in the top box and click Analyze.",
